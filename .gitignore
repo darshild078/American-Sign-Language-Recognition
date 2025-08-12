@@ -1,0 +1,11 @@
+# Checkpoints and model weights
+checkpoints/*.h5
+checkpoints/*.keras
+
+# Dataset images
+dataset/
+results/
+*.pyc
+__pycache__/
+.env
+*.DS_Store
