@@ -1,6 +1,5 @@
 # Checkpoints and model weights
-checkpoints/*.h5
-checkpoints/*.keras
+checkpoints/
 
 # Dataset images
 dataset/
