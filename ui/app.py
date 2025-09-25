@@ -12,50 +12,66 @@ from typing import Optional
 
 class PredictionSmoother:
     """
-    Ensures predictions are stable and enforces a time-based cooldown.
+    5-frame smoothing, 3/5 majority, 5s cooldown, 1s warmup
     """
     def __init__(self, window_size: int = 5, majority_threshold: int = 3, cooldown_seconds: float = 5.0):
         self.window_size = window_size
         self.majority_threshold = majority_threshold
         self.cooldown = cooldown_seconds
         self.predictions = deque(maxlen=self.window_size)
-        self.last_prediction_time = 0
+        self.last_prediction_time = 0.0
+        # NEW: warmup deadline; if now < _warmup_until, ignore predictions
+        self._warmup_until = 0.0
 
-    def add_prediction(self, prediction: str) -> Optional[str]:
-        current_time = time.time()
-        if current_time - self.last_prediction_time < self.cooldown:
+    # NEW: call when a hand appears for the first time
+    def start_warmup(self, seconds: float = 5.0):
+        self._warmup_until = time.time() + seconds
+
+    # NEW: force cooldown to start right now
+    def force_cooldown(self):
+        self.last_prediction_time = time.time()
+
+    def add_prediction(self, prediction: Optional[str]) -> Optional[str]:
+        now = time.time()
+
+        # Block predictions during warmup window
+        if now < self._warmup_until:
             return None
 
-        if prediction is None:
-            self.predictions.append("nothing") # Add a placeholder
-        else:
-            self.predictions.append(prediction)
+        # Standard cooldown
+        if now - self.last_prediction_time < self.cooldown:
+            return None
 
+        # Push into window
+        self.predictions.append('nothing' if prediction is None else prediction)
+
+        # Need a full window
         if len(self.predictions) < self.window_size:
             return None
 
-        vote_counts = Counter(self.predictions)
-        most_common = vote_counts.most_common(1)[0]
-        stable_prediction, vote_count = most_common[0], most_common[1]
+        # Majority vote
+        counts = Counter(self.predictions)
+        winner, votes = max(counts.items(), key=lambda kv: kv[1])
 
+        # Clear the window and accept only if criteria met
         self.predictions.clear()
 
-        if vote_count >= self.majority_threshold and stable_prediction != "nothing":
-            self.last_prediction_time = time.time()
-            return stable_prediction
-        
+        if votes >= self.majority_threshold and winner != 'nothing':
+            self.last_prediction_time = now
+            return winner
+
         return None
 
     def get_cooldown_status(self) -> tuple[bool, float]:
-        """Returns if currently in cooldown and the remaining time."""
-        time_since_last = time.time() - self.last_prediction_time
-        is_cooldown = time_since_last < self.cooldown
-        remaining = self.cooldown - time_since_last if is_cooldown else 0
-        return is_cooldown, remaining
+        elapsed = time.time() - self.last_prediction_time
+        in_cooldown = elapsed < self.cooldown
+        remain = self.cooldown - elapsed if in_cooldown else 0.0
+        return in_cooldown, remain
 
     def reset(self):
         self.predictions.clear()
-        self.last_prediction_time = 0
+        self.last_prediction_time = 0.0
+        self._warmup_until = 0.0
 
 class ASLSentenceBuilder:
     def __init__(self, root):
